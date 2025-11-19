@@ -11,6 +11,11 @@
         </form>
     </div>
     <div>
+	<form method="POST" action="{% url 'stock:sell' stock.pk %}">
+            {% csrf_token %}
+            {{ form }}
+            <button>Продать</button>
+        </form>
         <a href="{% url 'stock:list' %}">Назад к списку</a>
     </div>
 {% endblock %}

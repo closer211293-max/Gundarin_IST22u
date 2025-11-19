@@ -94,6 +94,60 @@ def account(request):
 
     return render(request, template_name='account.html', context=context)
 
+@login_required
+def stock_sell(request, pk):
+    if request.method != "POST":
+        return redirect('stock:detail', pk=pk)
 
+    stock = get_object_or_404(Stock, pk=pk)
+    form = BuySellForm(request.POST)
+
+    if form.is_valid():
+        amount = form.cleaned_data['amount']
+        price = form.cleaned_data['price']
+        sell_income = price * amount
+
+        # Получаем аккаунт пользователя для этой акции
+        try:
+            acc_stock = AccountStock.objects.get(account=request.user.account, stock=stock)
+        except AccountStock.DoesNotExist:
+            form.add_error(None, 'У вас нет таких акций')
+        else:
+            # Проверяем, что у пользователя достаточно акций для продажи
+            if acc_stock.amount < amount:
+                form.add_error(None, f'Недостаточно акций для продажи. У вас есть {acc_stock.amount} акций')
+            else:
+                # Уменьшаем количество акций
+                acc_stock.amount -= amount
+                
+                # Если продали все акции, обнуляем среднюю цену
+                if acc_stock.amount == 0:
+                    acc_stock.average_buy_cost = 0
+                
+                # Получаем или создаем валютный счет
+                acc_currency, created = AccountCurrency.objects.get_or_create(
+                    account=request.user.account, 
+                    currency=stock.currency,
+                    defaults={'amount': 0}
+                )
+                
+                # Пополняем валютный счет
+                acc_currency.amount += sell_income
+                
+                # Сохраняем изменения
+                acc_stock.save()
+                acc_currency.save()
+                
+                # Очищаем кэш баланса
+                cache.delete(f'currencies_{request.user.username}')
+                cache.delete(f'stocks_{request.user.username}')
+                
+                return redirect('stock:account')
+
+    context = {
+        'stock': stock,
+        'form': form
+    }
+    return render(request, 'stock.html', context)
 
 # Create your views here.
